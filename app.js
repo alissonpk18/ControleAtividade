@@ -85,6 +85,7 @@
     if (filterSetor) filterSetor.addEventListener("input", rerenderComFiltros);
     if (filterLocal) filterLocal.addEventListener("input", rerenderComFiltros);
     if (filterAndar) filterAndar.addEventListener("input", rerenderComFiltros);
+    setStatus("Aguardando arquivo para processar.", "status-loading");
 
     editModal.addEventListener("click", (event) => {
         if (event.target === editModal) fecharModal();
@@ -128,8 +129,15 @@
             const origData = XLSX.utils.sheet_to_json(worksheet, {
                 header: 1,
                 raw: false,
+                defval: "",
                 dateNF: "dd/mm/yyyy hh:mm:ss"
             });
+            document.dispatchEvent(new CustomEvent("source-sheet-loaded", {
+                detail: {
+                    origData,
+                    fileName: origemInput.files[0].name
+                }
+            }));
 
             const finalData = transformarDados(origData);
             const dataToSort = finalData.slice(1);
@@ -926,12 +934,19 @@
         return true;
     }
 
-    function githubContentsUrl() {
+    function githubContentsReadUrl() {
         const owner = encodeURIComponent(githubConfig.owner);
         const repo = encodeURIComponent(githubConfig.repo);
         const path = githubConfig.path.split("/").map((p) => encodeURIComponent(p)).join("/");
         const branch = encodeURIComponent(githubConfig.branch);
         return `https://api.github.com/repos/${owner}/${repo}/contents/${path}?ref=${branch}`;
+    }
+
+    function githubContentsWriteUrl() {
+        const owner = encodeURIComponent(githubConfig.owner);
+        const repo = encodeURIComponent(githubConfig.repo);
+        const path = githubConfig.path.split("/").map((p) => encodeURIComponent(p)).join("/");
+        return `https://api.github.com/repos/${owner}/${repo}/contents/${path}`;
     }
 
     function toBase64Utf8(texto) {
@@ -953,7 +968,7 @@
 
         try {
             setStatus("Carregando JSON do GitHub...", "status-loading");
-            const resp = await fetch(githubContentsUrl(), {
+            const resp = await fetch(githubContentsReadUrl(), {
                 headers: {
                     Authorization: `Bearer ${githubConfig.token}`,
                     Accept: "application/vnd.github+json"
@@ -961,6 +976,9 @@
             });
 
             if (!resp.ok) {
+                if (resp.status === 404) {
+                    throw new Error("Arquivo JSON não encontrado no repositório. Salve uma vez para criar.");
+                }
                 const erro = await resp.text();
                 throw new Error(`GitHub GET falhou (${resp.status}): ${erro}`);
             }
@@ -995,7 +1013,7 @@
             setStatus("Salvando JSON no GitHub...", "status-loading");
 
             if (!githubFileSha) {
-                const preflight = await fetch(githubContentsUrl(), {
+                const preflight = await fetch(githubContentsReadUrl(), {
                     headers: {
                         Authorization: `Bearer ${githubConfig.token}`,
                         Accept: "application/vnd.github+json"
@@ -1020,7 +1038,7 @@
             };
             if (githubFileSha) body.sha = githubFileSha;
 
-            const resp = await fetch(githubContentsUrl(), {
+            const resp = await fetch(githubContentsWriteUrl(), {
                 method: "PUT",
                 headers: {
                     Authorization: `Bearer ${githubConfig.token}`,
@@ -1081,9 +1099,8 @@
     const DEFAULT_CONFIG = { area: "Infra", matricula: "18881", colab: "Alisson" };
     const STORAGE_KEY = "os_processor_config";
     const cabecalho = ["AREA", "MATRICULA", "COLABORADOR", "DATA", "DESCRIÇÃO DA ATIVIDADE", "HORA INÍCIO", "HORA TÉRMINO", "SOLICITANTE", "SETOR", "OBSERVAÇÃO"];
-
-    const osFileInput = document.getElementById("origemFile");
-    if (!osFileInput) return;
+    const origemInput = document.getElementById("origemFile");
+    if (!origemInput) return;
 
     const osBtnSave = document.getElementById("osBtnSave");
     const osBtnConfig = document.getElementById("osBtnConfig");
@@ -1112,8 +1129,10 @@
     let dadosConsolidados = [cabecalho];
     let onConfirmAction = null;
 
-    osFileInput.addEventListener("change", () => {
-        if (osFileInput.files && osFileInput.files[0]) onProcessClick();
+    document.addEventListener("source-sheet-loaded", (event) => {
+        const detail = event.detail || {};
+        if (!Array.isArray(detail.origData)) return;
+        processarOrigemRaw(detail.origData, detail.fileName || "");
     });
     osBtnSave.addEventListener("click", onSaveClick);
     osBtnConfig.addEventListener("click", abrirModalConfig);
@@ -1291,67 +1310,43 @@
         osTableEmpty.style.display = temLinhas ? "none" : "block";
     }
 
-    function onProcessClick() {
-        const file = osFileInput.files && osFileInput.files[0];
-        if (!file) {
-            printLog("Aviso: Selecione um arquivo primeiro.");
-            setOsStatus("Arquivo obrigatório", "status-error");
-            return;
-        }
-
+    function processarOrigemRaw(raw, fileName) {
         osBtnSave.disabled = true;
         setOsStatus("Processando dados...", "status-loading");
-        printLog(`Lendo arquivo ${file.name}`);
+        printLog(`Lendo arquivo ${fileName || "(sem nome)"}`);
 
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            try {
-                const data = new Uint8Array(e.target.result);
-                const workbook = XLSX.read(data, { type: "array", cellDates: true });
-                const sheet = workbook.Sheets[workbook.SheetNames[0]];
-                const raw = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "", raw: true });
+        try {
+            dadosConsolidados = [cabecalho];
+            for (let i = 1; i < raw.length; i++) {
+                const r = raw[i];
+                if (!r || !r[2]) continue;
 
-                dadosConsolidados = [cabecalho];
-                for (let i = 1; i < raw.length; i++) {
-                    const r = raw[i];
-                    if (!r || !r[2]) continue;
+                const dataObj = corrigirDataBrasil(r[51]);
+                const horaInicioObj = corrigirDataBrasil(r[22]);
+                const horaTerminoObj = corrigirDataBrasil(r[51]);
 
-                    const dataObj = corrigirDataBrasil(r[51]);
-                    const horaInicioObj = corrigirDataBrasil(r[22]);
-                    const horaTerminoObj = corrigirDataBrasil(r[51]);
-
-                    dadosConsolidados.push([
-                        appConfig.area,
-                        appConfig.matricula,
-                        appConfig.colab,
-                        formatDateBr(dataObj),
-                        `Problema: ${r[2] || ""}; Solução: ${r[7] || ""}`,
-                        formatTimeOnly(horaInicioObj),
-                        formatTimeOnly(horaTerminoObj),
-                        r[4] || "",
-                        r[1] || "",
-                        r[32] || ""
-                    ]);
-                }
-
-                renderTabelaOS();
-                osBtnSave.disabled = dadosConsolidados.length <= 1;
-                setOsStatus("Revisão pronta", "status-success");
-                printLog(`Importação concluída. ${dadosConsolidados.length - 1} linha(s) mapeada(s).`);
-            } catch (err) {
-                setOsStatus("Falha no processamento", "status-error");
-                printLog(`Erro: ${err.message}`);
-            } finally {
-                // sem botão manual de extração: processamento automático no upload
+                dadosConsolidados.push([
+                    appConfig.area,
+                    appConfig.matricula,
+                    appConfig.colab,
+                    formatDateBr(dataObj),
+                    `Problema: ${r[2] || ""}; Solução: ${r[7] || ""}`,
+                    formatTimeOnly(horaInicioObj),
+                    formatTimeOnly(horaTerminoObj),
+                    r[4] || "",
+                    r[1] || "",
+                    r[32] || ""
+                ]);
             }
-        };
 
-        reader.onerror = () => {
-            setOsStatus("Falha na leitura", "status-error");
-            printLog("Erro: não foi possível ler o arquivo selecionado.");
-        };
-
-        reader.readAsArrayBuffer(file);
+            renderTabelaOS();
+            osBtnSave.disabled = dadosConsolidados.length <= 1;
+            setOsStatus("Revisão pronta", "status-success");
+            printLog(`Importação concluída. ${dadosConsolidados.length - 1} linha(s) mapeada(s).`);
+        } catch (err) {
+            setOsStatus("Falha no processamento", "status-error");
+            printLog(`Erro: ${err.message}`);
+        }
     }
 
     function gerarArquivosSemanais() {
