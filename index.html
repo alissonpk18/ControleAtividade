@@ -40,6 +40,28 @@
                     <button id="btnExportar" type="button" disabled>2. Exportar para Excel</button>
                     <button id="osBtnSave" type="button" disabled>3. Exportar Relatórios OS</button>
                     <button id="osBtnConfig" type="button">4. Ajustes Padrão OS</button>
+                    <button id="btnNovaAtividade" type="button">5. Nova Atividade</button>
+                    <button id="btnGithubLoad" type="button">6. Carregar GitHub</button>
+                    <button id="btnGithubSave" type="button">7. Salvar GitHub</button>
+                    <button id="btnGithubConfig" type="button">8. Config GitHub</button>
+                </div>
+
+                <div class="filters-row">
+                    <div class="form-group filter-group">
+                        <label for="filterSetor">Filtro Setor</label>
+                        <input type="text" id="filterSetor" placeholder="Ex: TI, UTI, Manutenção" />
+                    </div>
+                    <div class="form-group filter-group">
+                        <label for="filterLocal">Filtro Local</label>
+                        <input type="text" id="filterLocal" placeholder="Ex: Pronto Socorro" />
+                    </div>
+                    <div class="form-group filter-group">
+                        <label for="filterAndar">Filtro Andar</label>
+                        <input type="text" id="filterAndar" placeholder="Ex: 1º Andar" />
+                    </div>
+                    <div class="filter-actions">
+                        <button id="btnLimparFiltros" type="button">Limpar Filtros</button>
+                    </div>
                 </div>
 
                 <div class="status-row">
@@ -168,6 +190,73 @@
             <div class="modal-actions">
                 <button id="osSettingsCancel" type="button" class="btn-cancel">Fechar</button>
                 <button id="osSettingsSave" type="button">Salvar</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="activityModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="activityModalTitle">
+        <div class="modal-content">
+            <h2 id="activityModalTitle">Adicionar Atividade</h2>
+
+            <div class="form-group">
+                <label for="activityLocal">Local</label>
+                <input type="text" id="activityLocal" placeholder="Ex: Bloco A" />
+            </div>
+
+            <div class="form-group">
+                <label for="activityAndar">Andar</label>
+                <input type="text" id="activityAndar" placeholder="Ex: 2º Andar" />
+            </div>
+
+            <div class="form-group">
+                <label for="activitySetor">Setor</label>
+                <input type="text" id="activitySetor" placeholder="Ex: UTI" />
+            </div>
+
+            <div class="form-group">
+                <label for="activityDescricao">Descrição</label>
+                <input type="text" id="activityDescricao" placeholder="Descreva a atividade" />
+            </div>
+
+            <div class="modal-actions">
+                <button id="btnCancelActivityModal" type="button" class="btn-cancel">Cancelar</button>
+                <button id="btnSaveActivityModal" type="button">Adicionar</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="githubModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="githubModalTitle">
+        <div class="modal-content">
+            <h2 id="githubModalTitle">Configuração GitHub JSON</h2>
+
+            <div class="form-group">
+                <label for="ghOwner">Owner</label>
+                <input type="text" id="ghOwner" placeholder="Ex: seu-usuario" />
+            </div>
+
+            <div class="form-group">
+                <label for="ghRepo">Repositório</label>
+                <input type="text" id="ghRepo" placeholder="Ex: controle-atividade-github" />
+            </div>
+
+            <div class="form-group">
+                <label for="ghBranch">Branch</label>
+                <input type="text" id="ghBranch" placeholder="Ex: main" />
+            </div>
+
+            <div class="form-group">
+                <label for="ghPath">Caminho do JSON</label>
+                <input type="text" id="ghPath" placeholder="Ex: data/atividades.json" />
+            </div>
+
+            <div class="form-group">
+                <label for="ghToken">Token (PAT)</label>
+                <input type="password" id="ghToken" placeholder="Token com permissão de conteúdo" />
+            </div>
+
+            <div class="modal-actions">
+                <button id="btnCancelGithubModal" type="button" class="btn-cancel">Cancelar</button>
+                <button id="btnSaveGithubConfig" type="button">Salvar Config</button>
             </div>
         </div>
     </div>

@@ -143,6 +143,27 @@ input[type="text"]:focus {
     flex: 1 1 220px;
 }
 
+.filters-row {
+    margin-top: 1rem;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.8rem;
+    align-items: end;
+}
+
+.filter-group {
+    margin-bottom: 0;
+}
+
+.filter-actions {
+    display: flex;
+    align-items: end;
+}
+
+.filter-actions button {
+    width: 100%;
+}
+
 button {
     background: transparent;
     color: var(--accent);
@@ -220,12 +241,46 @@ button:disabled {
 }
 
 .cards-container {
+    display: block;
+}
+
+.status-board {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+    grid-template-columns: repeat(3, minmax(320px, 1fr));
     gap: 1rem;
+}
+
+.status-column {
+    background: #0e1018;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.8rem;
+    min-height: 280px;
     max-height: 72vh;
     overflow-y: auto;
-    padding-right: 0.4rem;
+}
+
+.status-column h3 {
+    margin: 0 0 0.7rem;
+    color: var(--accent);
+    font-size: 0.85rem;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+}
+
+.status-column-count {
+    color: var(--fg-muted);
+    font-size: 0.75rem;
+    margin-left: 0.35rem;
+}
+
+.status-column-empty {
+    margin: 0;
+    border: 1px dashed var(--border);
+    border-radius: 6px;
+    color: var(--fg-muted);
+    font-size: 0.8rem;
+    padding: 0.65rem;
 }
 
 .card {
@@ -238,6 +293,14 @@ button:disabled {
     flex-direction: column;
     gap: 0.7rem;
     position: relative;
+}
+
+.status-column .card {
+    margin-bottom: 0.75rem;
+}
+
+.status-column .card:last-child {
+    margin-bottom: 0;
 }
 
 .card-row {
@@ -309,6 +372,17 @@ button:disabled {
 .btn-card-finalize {
     font-size: 0.66rem;
     padding: 0.45rem 0.85rem;
+}
+
+.btn-card-pendencia {
+    border-color: #f97316;
+    color: #f97316;
+    display: none;
+}
+
+.btn-card-pendencia:hover:not(:disabled) {
+    background: #f97316;
+    color: #1a0b00;
 }
 
 .btn-card-edit {
@@ -590,7 +664,14 @@ button:disabled {
     }
 
     .cards-container {
+        display: block;
+    }
+
+    .status-board {
         grid-template-columns: 1fr;
+    }
+
+    .status-column {
         max-height: none;
     }
 
@@ -602,5 +683,9 @@ button:disabled {
     .status-row {
         grid-template-columns: 1fr;
         gap: 0.35rem;
+    }
+
+    .filters-row {
+        grid-template-columns: 1fr;
     }
 }
