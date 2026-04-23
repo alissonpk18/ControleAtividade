@@ -1,0 +1,178 @@
+﻿<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Controle de Atividade</title>
+    <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+    <div id="loginOverlay" class="login-overlay" role="dialog" aria-modal="true" aria-labelledby="loginTitle">
+        <form id="loginForm" class="login-card">
+            <h2 id="loginTitle">Acesso do Sistema</h2>
+            <p>Digite o usuário para continuar.</p>
+            <div class="form-group">
+                <label for="loginUser">Usuário</label>
+                <input type="text" id="loginUser" placeholder="Digite HP" autocomplete="username" />
+            </div>
+            <p id="loginError" class="modal-error"></p>
+            <div class="modal-actions">
+                <button id="loginBtn" type="submit">Entrar</button>
+            </div>
+        </form>
+    </div>
+
+    <main>
+        <section class="app-shell">
+            <header class="app-header">
+                <h1>Controle de Atividade</h1>
+                <p>Processamento local de planilhas com edição, cronômetro por card e exportação.</p>
+            </header>
+
+            <section class="controls-panel" aria-label="Controles principais">
+                <div class="form-group">
+                    <label for="origemFile">Arquivo de Origem Único (.xlsx, .xls, .xlsm)</label>
+                    <input type="file" id="origemFile" accept=".xlsx,.xls,.xlsm" />
+                </div>
+
+                <div class="btn-row">
+                    <button id="btnProcessar" type="button">1. Processar Dados</button>
+                    <button id="btnExportar" type="button" disabled>2. Exportar para Excel</button>
+                    <button id="osBtnSave" type="button" disabled>3. Exportar Relatórios OS</button>
+                    <button id="osBtnConfig" type="button">4. Ajustes Padrão OS</button>
+                </div>
+
+                <div class="status-row">
+                    <p id="status" role="status" aria-live="polite"></p>
+                    <p id="osStatus" role="status" aria-live="polite"></p>
+                </div>
+
+                <div class="os-log-wrap">
+                    <div class="os-log-header">
+                        <span>LOG DO PROCESSADOR</span>
+                        <button id="osBtnClearLog" type="button">Limpar</button>
+                    </div>
+                    <div id="osLog" class="os-log"></div>
+                </div>
+            </section>
+
+            <section id="tableContainer" class="table-wrapper" aria-live="polite"></section>
+
+            <section class="table-wrapper os-table-panel" aria-live="polite">
+                <div class="os-table-header">
+                    <h2>Revisão de Dados OS</h2>
+                    <span id="osRowCount">0</span>
+                </div>
+                <p id="osTableEmpty" class="os-empty">Nenhum dado para revisão. Importe uma planilha para começar.</p>
+                <div id="osTableContainer" class="os-table-container" hidden>
+                    <table class="os-table">
+                        <thead>
+                            <tr id="osTableHeader"></tr>
+                        </thead>
+                        <tbody id="osTableBody"></tbody>
+                    </table>
+                </div>
+            </section>
+        </section>
+    </main>
+
+    <div id="editModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+        <div class="modal-content">
+            <h2 id="modalTitle">Editar Informações</h2>
+
+            <div class="form-group">
+                <label for="modalInputLocal">Local</label>
+                <input type="text" id="modalInputLocal" placeholder="Ex: UTI 2, Farmácia" />
+            </div>
+
+            <div class="form-group">
+                <label for="modalInputAndar">Andar</label>
+                <input type="text" id="modalInputAndar" placeholder="Ex: Térreo, 1º Andar" />
+            </div>
+
+            <div class="form-group">
+                <label for="modalInputHoraInicio">Hora Início</label>
+                <input type="text" id="modalInputHoraInicio" placeholder="Ex: 08:30 ou 15/03/2024 08:30" />
+            </div>
+
+            <div class="form-group">
+                <label for="modalInputHoraFim">Hora Fim</label>
+                <input type="text" id="modalInputHoraFim" placeholder="Ex: 09:45 ou 15/03/2024 09:45" />
+            </div>
+
+            <div class="form-group">
+                <label for="modalInputStatus">Status</label>
+                <input type="text" id="modalInputStatus" placeholder="Ex: Concluída, Pendente" />
+            </div>
+
+            <div class="form-group">
+                <label for="modalInputSolucao">Solução</label>
+                <input type="text" id="modalInputSolucao" placeholder="Descreva a solução aplicada" />
+            </div>
+
+            <div class="modal-actions">
+                <button id="btnCancelModal" type="button" class="btn-cancel">Cancelar</button>
+                <button id="btnSaveModal" type="button">Salvar Dados</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="solutionModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="solutionModalTitle">
+        <div class="modal-content">
+            <h2 id="solutionModalTitle">Finalizar Atividade</h2>
+
+            <div class="form-group">
+                <label for="solutionInput">Solução</label>
+                <input type="text" id="solutionInput" placeholder="Informe a solução antes de finalizar" />
+            </div>
+
+            <p id="solutionError" class="modal-error"></p>
+
+            <div class="modal-actions">
+                <button id="btnCancelSolutionModal" type="button" class="btn-cancel">Cancelar</button>
+                <button id="btnConfirmSolutionModal" type="button">Confirmar Finalização</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="osConfirmModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="osConfirmTitle">
+        <div class="modal-content">
+            <h2 id="osConfirmTitle">Confirmar Ação</h2>
+            <p id="osConfirmBody"></p>
+            <div class="modal-actions">
+                <button id="osConfirmCancel" type="button" class="btn-cancel">Cancelar</button>
+                <button id="osConfirmOk" type="button">Confirmar</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="osSettingsModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="osSettingsTitle">
+        <div class="modal-content">
+            <h2 id="osSettingsTitle">Ajustes Padrão do Processador</h2>
+
+            <div class="form-group">
+                <label for="osConfArea">Área</label>
+                <input type="text" id="osConfArea" placeholder="Ex: Infra" />
+            </div>
+
+            <div class="form-group">
+                <label for="osConfMatricula">Matrícula</label>
+                <input type="text" id="osConfMatricula" placeholder="Ex: 18881" />
+            </div>
+
+            <div class="form-group">
+                <label for="osConfColab">Colaborador</label>
+                <input type="text" id="osConfColab" placeholder="Ex: Alisson" />
+            </div>
+
+            <div class="modal-actions">
+                <button id="osSettingsCancel" type="button" class="btn-cancel">Fechar</button>
+                <button id="osSettingsSave" type="button">Salvar</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
