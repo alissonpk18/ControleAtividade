@@ -197,6 +197,7 @@
         const colAberto = criarColunaStatus("Aberto");
         const colAndamento = criarColunaStatus("Em andamento");
         const colConcluido = criarColunaStatus("Concluída");
+        const rowIndexesRenderizados = [];
 
         for (let i = 1; i < aoa.length; i++) {
             const rowData = aoa[i];
@@ -282,14 +283,18 @@
             else colAberto.cards.push(card);
 
             obterEstadoCronometro(i);
-            atualizarCronometroDisplay(i);
-            sincronizarEstadoCartao(i);
+            rowIndexesRenderizados.push(i);
         }
 
         board.appendChild(montarColunaStatus(colAberto));
         board.appendChild(montarColunaStatus(colAndamento));
         board.appendChild(montarColunaStatus(colConcluido));
         container.appendChild(board);
+
+        rowIndexesRenderizados.forEach((rowIndex) => {
+            atualizarCronometroDisplay(rowIndex);
+            sincronizarEstadoCartao(rowIndex);
+        });
     }
 
     function criarColunaStatus(titulo) {
