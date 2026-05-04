@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8" />
@@ -10,12 +10,13 @@
     <div id="loginOverlay" class="login-overlay" role="dialog" aria-modal="true" aria-labelledby="loginTitle">
         <form id="loginForm" class="login-card">
             <h2 id="loginTitle">Acesso do Sistema</h2>
-            <p>Digite o usuário para continuar.</p>
+            <p>Digite sua matrícula para continuar.</p>
             <div class="form-group">
-                <label for="loginUser">Usuário</label>
-                <input type="text" id="loginUser" placeholder="Digite HP" autocomplete="username" />
+                <label for="loginUser">Matrícula</label>
+                <input type="text" id="loginUser" placeholder="Ex: 18881" autocomplete="username" />
             </div>
             <p id="loginError" class="modal-error"></p>
+            <p id="loginLoading" style="color:var(--accent);font-size:0.85rem;display:none;">Verificando matrícula...</p>
             <div class="modal-actions">
                 <button id="loginBtn" type="submit">Entrar</button>
             </div>
@@ -44,6 +45,9 @@
                     <button id="btnGithubLoad" type="button">6. Carregar GitHub</button>
                     <button id="btnGithubSave" type="button">7. Salvar GitHub</button>
                     <button id="btnGithubConfig" type="button">8. Config GitHub</button>
+                    <button id="btnGSheetsLoad" type="button" class="btn-gsheets">9. Carregar Google Sheets</button>
+                    <button id="btnGSheetsSave" type="button" class="btn-gsheets">10. Salvar Google Sheets</button>
+                    <button id="btnGSheetsConfig" type="button" class="btn-gsheets">11. Config Google Sheets</button>
                 </div>
 
                 <div class="filters-row">
@@ -257,6 +261,31 @@
             <div class="modal-actions">
                 <button id="btnCancelGithubModal" type="button" class="btn-cancel">Cancelar</button>
                 <button id="btnSaveGithubConfig" type="button">Salvar Config</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="gsheetsModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="gsheetsModalTitle">
+        <div class="modal-content">
+            <h2 id="gsheetsModalTitle">Configuração Google Sheets</h2>
+            <p style="font-size:0.85rem;color:#aaa;margin-bottom:1rem;">Cole a URL do Apps Script implantado como Web App.</p>
+
+            <div class="form-group">
+                <label for="gsWebAppUrl">URL do Apps Script (Web App)</label>
+                <input type="text" id="gsWebAppUrl" placeholder="https://script.google.com/macros/s/.../exec" />
+            </div>
+
+            <div class="form-group">
+                <label for="gsSheetName">Nome da Aba</label>
+                <input type="text" id="gsSheetName" placeholder="Página1" />
+            </div>
+
+            <p id="gsheetsConfigError" class="modal-error"></p>
+
+            <div class="modal-actions">
+                <button id="btnCancelGSheetsModal" type="button" class="btn-cancel">Cancelar</button>
+                <button id="btnSaveGSheetsConfig" type="button">Salvar Config</button>
+                <button id="btnTestarGSheets" type="button" style="background:#2d7d46;">Testar Conexão</button>
             </div>
         </div>
     </div>

@@ -1,4 +1,4 @@
-﻿:root {
+:root {
     --bg-main: #0a0a0c;
     --bg-panel: #111116;
     --fg-main: #e2e8f0;
@@ -660,6 +660,17 @@ button:disabled {
     margin: 0.4rem 0 0;
     font-size: 0.9rem;
     line-height: 1.45;
+}
+
+.btn-gsheets {
+    border-color: #34a853;
+    color: #34a853;
+}
+
+.btn-gsheets:hover:not(:disabled) {
+    background: #34a853;
+    color: #fff;
+    box-shadow: 0 0 0 2px rgba(52, 168, 83, 0.25);
 }
 
 @media (max-width: 760px) {

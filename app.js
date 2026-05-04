@@ -1,4 +1,4 @@
-﻿(() => {
+(() => {
     const COLUMNS = {
         local: 0,
         andar: 1,
@@ -140,7 +140,11 @@
             }));
 
             const finalData = transformarDados(origData);
-            const dataToSort = finalData.slice(1);
+
+            /* ── Merge com Google Sheets (deduplicação por nº OS) ────── */
+            const mergedData = await mergeComGoogleSheets(finalData);
+
+            const dataToSort = mergedData.slice(1);
             dataToSort.sort((a, b) => {
                 const cmpLocal = String(a[COLUMNS.local] || "").localeCompare(String(b[COLUMNS.local] || ""));
                 if (cmpLocal !== 0) return cmpLocal;
@@ -148,14 +152,168 @@
             });
 
             limparCronometrosAtivos();
-            dadosProcessadosGlobais = [finalData[0], ...dataToSort];
+            dadosProcessadosGlobais = [mergedData[0], ...dataToSort];
             renderHtmlCards(dadosProcessadosGlobais, "tableContainer");
 
-            setStatus(`Operação concluída. ${dataToSort.length} registros processados.`, "status-success");
+            setStatus(`Operação concluída. ${dataToSort.length} registros processados (merge com Google Sheets aplicado).`, "status-success");
             btnExportar.disabled = false;
+
+            /* ── Auto-save no Google Sheets após merge ────── */
+            autoSaveGoogleSheets();
         } catch (err) {
             setStatus(`Erro crítico: ${err.message}`, "status-error");
         }
+    }
+
+    function encontrarColunaOS(headers) {
+        if (!headers || headers.length === 0) return -1;
+        const termos = ["numero de os", "número de os", "n os", "nº os", "num os", "os", "n°"];
+        for (let i = 0; i < headers.length; i++) {
+            const h = normalizarTexto(headers[i]);
+            for (const termo of termos) {
+                if (h.includes(termo)) return i;
+            }
+        }
+        return -1;
+    }
+
+    async function mergeComGoogleSheets(novosDados) {
+        if (!gsheetsConfig || !gsheetsConfig.webAppUrl) return novosDados;
+
+        try {
+            setStatus("Buscando dados existentes no Google Sheets para merge...", "status-loading");
+
+            const url = `${gsheetsConfig.webAppUrl}?action=read&sheet=${encodeURIComponent(gsheetsConfig.sheetName)}`;
+            const resp = await fetch(url, { redirect: "follow" });
+            if (!resp.ok) return novosDados;
+
+            const data = await resp.json();
+            if (data.error || !data.values || !Array.isArray(data.values) || data.values.length <= 1) {
+                return novosDados;
+            }
+
+            const gsHeaders = data.values[0];
+            const gsRows = data.values.slice(1);
+            const novosHeaders = novosDados[0];
+            const novosRows = novosDados.slice(1);
+
+            const gsOsCol = encontrarColunaOS(gsHeaders);
+            const novoOsCol = encontrarColunaOS(novosHeaders);
+
+            if (gsOsCol < 0 || novoOsCol < 0) {
+                setStatus("Coluna 'número de OS' não encontrada. Merge ignorado.", "status-loading");
+                return novosDados;
+            }
+
+            const gsStatusCol = gsHeaders.findIndex(h => normalizarTexto(h).includes("status"));
+            const novoStatusCol = novosHeaders.findIndex(h => normalizarTexto(h).includes("status"));
+
+            /* Mapa de OS existentes no Google Sheets com seus dados completos */
+            const gsMap = new Map();
+            gsRows.forEach(row => {
+                const osNum = String(row[gsOsCol] || "").trim();
+                if (osNum) gsMap.set(osNum, row);
+            });
+
+            /* Set de OS no novo upload */
+            const novosOsSet = new Set();
+            novosRows.forEach(row => {
+                const osNum = String(row[novoOsCol] || "").trim();
+                if (osNum) novosOsSet.add(osNum);
+            });
+
+            /* Para cada OS existente no GSheets que NÃO aparece no novo upload → Concluída */
+            let concluidasCount = 0;
+            const linhasConcluidasExtras = [];
+
+            gsMap.forEach((gsRow, osNum) => {
+                if (!novosOsSet.has(osNum)) {
+                    const linhaConcluida = [...gsRow];
+                    /* Ajusta tamanho para caber nos novos headers */
+                    while (linhaConcluida.length < novosHeaders.length) linhaConcluida.push("");
+                    /* Garante que o status fique como Concluída */
+                    if (novoStatusCol >= 0) linhaConcluida[novoStatusCol] = "Concluída";
+                    else if (COLUMNS.status < linhaConcluida.length) linhaConcluida[COLUMNS.status] = "Concluída";
+                    linhasConcluidasExtras.push(linhaConcluida);
+                    concluidasCount++;
+                }
+            });
+
+            /* Para cada OS no novo upload, preserva status/solução do GSheets se existir */
+            for (let i = 0; i < novosRows.length; i++) {
+                const osNum = String(novosRows[i][novoOsCol] || "").trim();
+                if (osNum && gsMap.has(osNum)) {
+                    const gsRow = gsMap.get(osNum);
+                    /* Preserva Local, Andar, Hora inicio, Hora fim, Solução do GSheets se preenchido */
+                    if (gsStatusCol >= 0 && novoStatusCol >= 0) {
+                        const gsStatus = String(gsRow[gsStatusCol] || "").trim();
+                        if (gsStatus && gsStatus !== "Aberto") {
+                            novosRows[i][novoStatusCol] = gsStatus;
+                        }
+                    }
+                    /* Preserva solução se existia */
+                    const gsSolCol = gsHeaders.findIndex(h => normalizarTexto(h).includes("solucao") || normalizarTexto(h).includes("solução"));
+                    const novoSolCol = novosHeaders.findIndex(h => normalizarTexto(h).includes("solucao") || normalizarTexto(h).includes("solução"));
+                    if (gsSolCol >= 0 && novoSolCol >= 0) {
+                        const gsSol = String(gsRow[gsSolCol] || "").trim();
+                        if (gsSol) novosRows[i][novoSolCol] = gsSol;
+                    }
+                    /* Preserva Local/Andar se preenchido no GSheets */
+                    const gsLocalCol = gsHeaders.findIndex(h => normalizarTexto(h) === "local");
+                    if (gsLocalCol >= 0 && COLUMNS.local < novosRows[i].length) {
+                        const gsLocal = String(gsRow[gsLocalCol] || "").trim();
+                        if (gsLocal && !novosRows[i][COLUMNS.local]) novosRows[i][COLUMNS.local] = gsLocal;
+                    }
+                    const gsAndarCol = gsHeaders.findIndex(h => normalizarTexto(h) === "andar");
+                    if (gsAndarCol >= 0 && COLUMNS.andar < novosRows[i].length) {
+                        const gsAndar = String(gsRow[gsAndarCol] || "").trim();
+                        if (gsAndar && !novosRows[i][COLUMNS.andar]) novosRows[i][COLUMNS.andar] = gsAndar;
+                    }
+                    /* Preserva Hora inicio/fim se preenchido no GSheets */
+                    const gsHIniCol = gsHeaders.findIndex(h => normalizarTexto(h).includes("hora") && normalizarTexto(h).includes("ini"));
+                    if (gsHIniCol >= 0 && COLUMNS.horaInicio < novosRows[i].length) {
+                        const gsHIni = String(gsRow[gsHIniCol] || "").trim();
+                        if (gsHIni && !novosRows[i][COLUMNS.horaInicio]) novosRows[i][COLUMNS.horaInicio] = gsHIni;
+                    }
+                    const gsHFimCol = gsHeaders.findIndex(h => normalizarTexto(h).includes("hora") && normalizarTexto(h).includes("fim"));
+                    if (gsHFimCol >= 0 && COLUMNS.horaFim < novosRows[i].length) {
+                        const gsHFim = String(gsRow[gsHFimCol] || "").trim();
+                        if (gsHFim && !novosRows[i][COLUMNS.horaFim]) novosRows[i][COLUMNS.horaFim] = gsHFim;
+                    }
+                }
+            }
+
+            const resultado = [novosHeaders, ...novosRows, ...linhasConcluidasExtras];
+            setStatus(`Merge: ${novosRows.length} ativas + ${concluidasCount} concluída(s) automática(s).`, "status-loading");
+            return resultado;
+
+        } catch (err) {
+            setStatus(`Merge ignorado (erro ao buscar GSheets): ${err.message}`, "status-loading");
+            return novosDados;
+        }
+    }
+
+    async function autoSaveGoogleSheets() {
+        if (!gsheetsConfig || !gsheetsConfig.webAppUrl || !dadosProcessadosGlobais) return;
+        try {
+            const payload = {
+                action: "write",
+                sheet: gsheetsConfig.sheetName,
+                values: dadosProcessadosGlobais
+            };
+            const resp = await fetch(gsheetsConfig.webAppUrl, {
+                method: "POST",
+                headers: { "Content-Type": "text/plain" },
+                body: JSON.stringify(payload),
+                redirect: "follow"
+            });
+            if (resp.ok) {
+                const result = await resp.json();
+                if (!result.error) {
+                    setStatus(`Dados processados e sincronizados com Google Sheets! ${result.rowCount} linha(s).`, "status-success");
+                }
+            }
+        } catch (_) { /* silencioso */ }
     }
 
     function transformarDados(origData) {
@@ -1066,6 +1224,195 @@
         }
     }
 
+    /* ====================================================================
+       INTEGRAÇÃO GOOGLE SHEETS (via Apps Script Web App)
+       ==================================================================== */
+    const GSHEETS_CFG_KEY = "gsheets_config_v1";
+
+    const btnGSheetsLoad = document.getElementById("btnGSheetsLoad");
+    const btnGSheetsSave = document.getElementById("btnGSheetsSave");
+    const btnGSheetsConfig = document.getElementById("btnGSheetsConfig");
+    const gsheetsModal = document.getElementById("gsheetsModal");
+    const btnCancelGSheetsModal = document.getElementById("btnCancelGSheetsModal");
+    const btnSaveGSheetsConfig = document.getElementById("btnSaveGSheetsConfig");
+    const btnTestarGSheets = document.getElementById("btnTestarGSheets");
+    const gsWebAppUrl = document.getElementById("gsWebAppUrl");
+    const gsSheetName = document.getElementById("gsSheetName");
+    const gsheetsConfigError = document.getElementById("gsheetsConfigError");
+
+    let gsheetsConfig = carregarGSheetsConfig();
+
+    if (btnGSheetsLoad) btnGSheetsLoad.addEventListener("click", carregarDoGoogleSheets);
+    if (btnGSheetsSave) btnGSheetsSave.addEventListener("click", salvarNoGoogleSheets);
+    if (btnGSheetsConfig) btnGSheetsConfig.addEventListener("click", abrirGSheetsModal);
+    if (btnCancelGSheetsModal) btnCancelGSheetsModal.addEventListener("click", fecharGSheetsModal);
+    if (btnSaveGSheetsConfig) btnSaveGSheetsConfig.addEventListener("click", salvarGSheetsConfigAction);
+    if (btnTestarGSheets) btnTestarGSheets.addEventListener("click", testarConexaoGSheets);
+
+    if (gsheetsModal) {
+        gsheetsModal.addEventListener("click", (event) => {
+            if (event.target === gsheetsModal) fecharGSheetsModal();
+        });
+    }
+    document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && gsheetsModal && gsheetsModal.style.display === "flex") fecharGSheetsModal();
+    });
+
+    function carregarGSheetsConfig() {
+        const GSHEETS_DEFAULT_URL = "https://script.google.com/macros/s/AKfycbxGRGxwvIBBtkZVfyULANdjoy7pLjsGj6K7u37YaoNdhDN0XSfPzGQdeglHkx7EW3o/exec";
+        const GSHEETS_DEFAULT_SHEET = "Página1";
+        try {
+            const raw = localStorage.getItem(GSHEETS_CFG_KEY);
+            if (!raw) return { webAppUrl: GSHEETS_DEFAULT_URL, sheetName: GSHEETS_DEFAULT_SHEET };
+            const cfg = JSON.parse(raw);
+            return {
+                webAppUrl: cfg.webAppUrl || GSHEETS_DEFAULT_URL,
+                sheetName: cfg.sheetName || GSHEETS_DEFAULT_SHEET
+            };
+        } catch (_) {
+            return { webAppUrl: GSHEETS_DEFAULT_URL, sheetName: GSHEETS_DEFAULT_SHEET };
+        }
+    }
+
+    function salvarGSheetsConfigLocal() {
+        localStorage.setItem(GSHEETS_CFG_KEY, JSON.stringify(gsheetsConfig));
+    }
+
+    function abrirGSheetsModal() {
+        if (!gsheetsModal) return;
+        gsWebAppUrl.value = gsheetsConfig.webAppUrl || "";
+        gsSheetName.value = gsheetsConfig.sheetName || "Página1";
+        gsheetsConfigError.textContent = "";
+        gsheetsModal.style.display = "flex";
+        gsWebAppUrl.focus();
+    }
+
+    function fecharGSheetsModal() {
+        if (!gsheetsModal) return;
+        gsheetsModal.style.display = "none";
+        gsheetsConfigError.textContent = "";
+    }
+
+    function salvarGSheetsConfigAction() {
+        const url = String(gsWebAppUrl.value || "").trim();
+        const sheet = String(gsSheetName.value || "").trim() || "Página1";
+
+        if (!url) {
+            gsheetsConfigError.textContent = "A URL do Apps Script é obrigatória.";
+            return;
+        }
+
+        if (!url.startsWith("https://script.google.com/")) {
+            gsheetsConfigError.textContent = "A URL deve começar com https://script.google.com/";
+            return;
+        }
+
+        gsheetsConfig = { webAppUrl: url, sheetName: sheet };
+        salvarGSheetsConfigLocal();
+        gsheetsConfigError.textContent = "";
+        fecharGSheetsModal();
+        setStatus("Configuração Google Sheets salva com sucesso.", "status-success");
+    }
+
+    function validarGSheetsConfig() {
+        if (!gsheetsConfig.webAppUrl) {
+            setStatus("Config Google Sheets incompleta. Clique em '11. Config Google Sheets' e preencha a URL.", "status-error");
+            return false;
+        }
+        return true;
+    }
+
+    async function testarConexaoGSheets() {
+        const url = String(gsWebAppUrl.value || "").trim();
+        if (!url) {
+            gsheetsConfigError.textContent = "Preencha a URL antes de testar.";
+            return;
+        }
+
+        gsheetsConfigError.textContent = "";
+        gsheetsConfigError.style.color = "var(--accent)";
+        gsheetsConfigError.textContent = "Testando conexão...";
+
+        try {
+            const testUrl = `${url}?action=ping&sheet=${encodeURIComponent(gsSheetName.value || "Página1")}`;
+            const resp = await fetch(testUrl, { redirect: "follow" });
+
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+
+            const data = await resp.json();
+            gsheetsConfigError.style.color = "var(--success)";
+            gsheetsConfigError.textContent = `✅ Conexão OK! Planilha: "${data.sheetName || "?"}", Linhas: ${data.rowCount ?? "?"}`;
+        } catch (err) {
+            gsheetsConfigError.style.color = "var(--error)";
+            gsheetsConfigError.textContent = `❌ Falha: ${err.message}. Verifique a URL e se o Apps Script foi implantado corretamente.`;
+        }
+    }
+
+    async function carregarDoGoogleSheets() {
+        if (!validarGSheetsConfig()) return;
+
+        try {
+            setStatus("Carregando dados do Google Sheets...", "status-loading");
+
+            const url = `${gsheetsConfig.webAppUrl}?action=read&sheet=${encodeURIComponent(gsheetsConfig.sheetName)}`;
+            const resp = await fetch(url, { redirect: "follow" });
+
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${await resp.text()}`);
+
+            const data = await resp.json();
+
+            if (data.error) throw new Error(data.error);
+
+            if (!data.values || !Array.isArray(data.values) || data.values.length === 0) {
+                throw new Error("Planilha vazia ou sem dados. Adicione cabeçalhos e dados primeiro.");
+            }
+
+            limparCronometrosAtivos();
+            dadosProcessadosGlobais = data.values;
+            renderHtmlCards(dadosProcessadosGlobais, "tableContainer");
+            btnExportar.disabled = dadosProcessadosGlobais.length <= 1;
+            setStatus(`Dados carregados do Google Sheets! ${dadosProcessadosGlobais.length - 1} registro(s).`, "status-success");
+        } catch (error) {
+            setStatus(`Erro ao carregar do Google Sheets: ${error.message}`, "status-error");
+        }
+    }
+
+    async function salvarNoGoogleSheets() {
+        if (!validarGSheetsConfig()) return;
+
+        if (!dadosProcessadosGlobais || dadosProcessadosGlobais.length === 0) {
+            setStatus("Sem dados para salvar no Google Sheets.", "status-error");
+            return;
+        }
+
+        try {
+            setStatus("Salvando dados no Google Sheets...", "status-loading");
+
+            const payload = {
+                action: "write",
+                sheet: gsheetsConfig.sheetName,
+                values: dadosProcessadosGlobais
+            };
+
+            const resp = await fetch(gsheetsConfig.webAppUrl, {
+                method: "POST",
+                headers: { "Content-Type": "text/plain" },
+                body: JSON.stringify(payload),
+                redirect: "follow"
+            });
+
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${await resp.text()}`);
+
+            const result = await resp.json();
+
+            if (result.error) throw new Error(result.error);
+
+            setStatus(`Dados salvos no Google Sheets! ${result.rowCount ?? (dadosProcessadosGlobais.length - 1)} linha(s) gravada(s).`, "status-success");
+        } catch (error) {
+            setStatus(`Erro ao salvar no Google Sheets: ${error.message}`, "status-error");
+        }
+    }
+
     function setStatus(message, cssClass) {
         statusBox.textContent = message;
         statusBox.className = cssClass;
@@ -1073,27 +1420,101 @@
 })();
 
 (() => {
-    const USER_PADRAO = "HP";
+    const GSHEETS_URL = "https://script.google.com/macros/s/AKfycbxGRGxwvIBBtkZVfyULANdjoy7pLjsGj6K7u37YaoNdhDN0XSfPzGQdeglHkx7EW3o/exec";
     const loginOverlay = document.getElementById("loginOverlay");
     const loginForm = document.getElementById("loginForm");
     const loginUser = document.getElementById("loginUser");
     const loginError = document.getElementById("loginError");
+    const loginLoading = document.getElementById("loginLoading");
 
     if (!loginOverlay || !loginForm || !loginUser || !loginError) return;
 
-    loginForm.addEventListener("submit", (event) => {
+    /* Dados do usuário logado — acessível globalmente via window */
+    window.__usuarioLogado = null;
+
+    loginForm.addEventListener("submit", async (event) => {
         event.preventDefault();
 
-        const usuario = String(loginUser.value || "").trim().toUpperCase();
-        if (usuario !== USER_PADRAO) {
-            loginError.textContent = `Usuário inválido. Digite "${USER_PADRAO}".`;
+        const matricula = String(loginUser.value || "").trim();
+        if (!matricula) {
+            loginError.textContent = "Digite sua matrícula.";
             loginUser.focus();
-            loginUser.select();
             return;
         }
 
         loginError.textContent = "";
-        loginOverlay.style.display = "none";
+        if (loginLoading) loginLoading.style.display = "block";
+
+        try {
+            const url = `${GSHEETS_URL}?action=read&sheet=Usuarios`;
+            const resp = await fetch(url, { redirect: "follow" });
+
+            if (!resp.ok) throw new Error("Falha ao acessar planilha de usuários.");
+
+            const data = await resp.json();
+            if (data.error) throw new Error(data.error);
+            if (!data.values || data.values.length <= 1) throw new Error("Nenhum usuário cadastrado.");
+
+            const headers = data.values[0];
+            const rows = data.values.slice(1);
+
+            /* Encontra índices das colunas */
+            const norm = (s) => String(s || "").trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+            const colMatricula = headers.findIndex(h => norm(h).includes("matricula"));
+            const colNome = headers.findIndex(h => norm(h) === "nome");
+            const colArea = headers.findIndex(h => norm(h) === "area");
+            const colCargo = headers.findIndex(h => norm(h) === "cargo");
+            const colAtivo = headers.findIndex(h => norm(h) === "ativo");
+
+            if (colMatricula < 0) throw new Error("Coluna 'Matricula' não encontrada na aba Usuarios.");
+
+            /* Procura a matrícula */
+            const userRow = rows.find(r => String(r[colMatricula] || "").trim() === matricula);
+
+            if (!userRow) {
+                loginError.textContent = `Matrícula "${matricula}" não cadastrada. Solicite acesso ao administrador.`;
+                if (loginLoading) loginLoading.style.display = "none";
+                loginUser.focus();
+                loginUser.select();
+                return;
+            }
+
+            /* Verifica se está ativo */
+            if (colAtivo >= 0) {
+                const ativo = norm(userRow[colAtivo]);
+                if (ativo === "nao" || ativo === "não" || ativo === "n") {
+                    loginError.textContent = "Sua matrícula está desativada. Contate o administrador.";
+                    if (loginLoading) loginLoading.style.display = "none";
+                    return;
+                }
+            }
+
+            /* Login OK — salva dados do usuário */
+            const userData = {
+                matricula: matricula,
+                nome: colNome >= 0 ? String(userRow[colNome] || "").trim() : "",
+                area: colArea >= 0 ? String(userRow[colArea] || "").trim() : "",
+                cargo: colCargo >= 0 ? String(userRow[colCargo] || "").trim() : ""
+            };
+
+            window.__usuarioLogado = userData;
+            loginError.textContent = "";
+            if (loginLoading) loginLoading.style.display = "none";
+            loginOverlay.style.display = "none";
+
+            /* Atualiza cabeçalho com nome do usuário */
+            const headerP = document.querySelector(".app-header p");
+            if (headerP) {
+                headerP.textContent = `Bem-vindo, ${userData.nome || matricula}! | Área: ${userData.area || "—"} | Matrícula: ${matricula}`;
+            }
+
+            /* Dispara evento para outros módulos carregarem config do usuário */
+            document.dispatchEvent(new CustomEvent("user-logged-in", { detail: userData }));
+
+        } catch (err) {
+            loginError.textContent = `Erro: ${err.message}`;
+            if (loginLoading) loginLoading.style.display = "none";
+        }
     });
 
     loginUser.value = "";
@@ -1139,6 +1560,19 @@
         if (!Array.isArray(detail.origData)) return;
         processarOrigemRaw(detail.origData, detail.fileName || "");
     });
+
+    /* Quando o usuário faz login, atualiza config automaticamente */
+    document.addEventListener("user-logged-in", (event) => {
+        const user = event.detail || {};
+        if (user.matricula) {
+            appConfig.matricula = user.matricula;
+            appConfig.colab = user.nome || appConfig.colab;
+            appConfig.area = user.area || appConfig.area;
+            salvarConfigLocal();
+            printLog(`Usuário logado: ${user.nome} (${user.matricula}) — Área: ${user.area}`);
+        }
+    });
+
     osBtnSave.addEventListener("click", onSaveClick);
     osBtnConfig.addEventListener("click", abrirModalConfig);
     osBtnClearLog.addEventListener("click", limparLog);
